@@ -13,3 +13,6 @@
 [submodule "BAM-Contracts/lib/erc4626-tests"]
 	path = BAM-Contracts/lib/erc4626-tests
 	url = https://github.com/a16z/erc4626-tests
+[submodule "BAM-Contracts/lib/enso-weiroll"]
+	path = BAM-Contracts/lib/enso-weiroll
+	url = https://github.com/EnsoFinance/enso-weiroll
