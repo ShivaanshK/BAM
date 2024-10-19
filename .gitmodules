@@ -4,3 +4,6 @@
 [submodule "BAM-Contracts/lib/solady"]
 	path = BAM-Contracts/lib/solady
 	url = https://github.com/vectorized/solady
+[submodule "BAM-Contracts/lib/solmate"]
+	path = BAM-Contracts/lib/solmate
+	url = https://github.com/transmissions11/solmate
