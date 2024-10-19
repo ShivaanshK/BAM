@@ -10,3 +10,6 @@
 [submodule "BAM-Contracts/lib/clones-with-immutable-args"]
 	path = BAM-Contracts/lib/clones-with-immutable-args
 	url = https://github.com/wighawag/clones-with-immutable-args
+[submodule "BAM-Contracts/lib/erc4626-tests"]
+	path = BAM-Contracts/lib/erc4626-tests
+	url = https://github.com/a16z/erc4626-tests
