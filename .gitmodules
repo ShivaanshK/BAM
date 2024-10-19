@@ -7,3 +7,6 @@
 [submodule "BAM-Contracts/lib/solmate"]
 	path = BAM-Contracts/lib/solmate
 	url = https://github.com/transmissions11/solmate
+[submodule "BAM-Contracts/lib/clones-with-immutable-args"]
+	path = BAM-Contracts/lib/clones-with-immutable-args
+	url = https://github.com/wighawag/clones-with-immutable-args
