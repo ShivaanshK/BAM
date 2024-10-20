@@ -9,6 +9,7 @@ import { ReentrancyGuard } from "lib/openzeppelin-contracts/contracts/utils/Reen
 import { Points } from "src/Points.sol";
 import { PointsFactory } from "src/PointsFactory.sol";
 import { Owned } from "lib/solmate/src/auth/Owned.sol";
+import { ECDSA } from "lib/solady/src/utils/ECDSA.sol";
 
 /// @title OffchainActionMarketHub
 /// @author ShivaanshK
@@ -87,7 +88,9 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         uint256 dueDate;
         address frontendFeeRecipient;
         address[] incentivesRequested;
-        uint256[] incentiveAmountsRequested;
+        mapping(address => uint256) incentiveAmountsRequested; // amounts to be allocated to APs (per incentive)
+        mapping(address => uint256) incentiveToProtocolFeeAmount; // amounts to be allocated to protocolFeeClaimant (per incentive)
+        mapping(address => uint256) incentiveToFrontendFeeAmount; // amounts to be allocated to frontend provider (per incentive)
     }
 
     event MarketCreated(uint256 indexed marketID, bytes32 indexed marketHash, uint256 frontendFee, bytes32 ipfsContentID, address oanSigningAddress);
@@ -174,10 +177,10 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
     error InvalidPointsProgram();
     /// @notice emitted when APOfferFill charges a trivial incentive amount
     error NoIncentivesPaidOnFill();
+    /// @notice emitted when ecrecover fails on claim
+    error InvalidOanSignature();
     /// @notice emitted when trying to fill offers while offers are paused
     error OffersPaused();
-    /// @notice emitted when trying to fill an offer with a quantity below the minimum fill percent
-    error InsufficientFillPercent();
 
     /// @notice Check if offer fills have been paused
     modifier offersNotPaused() {
@@ -274,24 +277,34 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
             revert MismatchedBaseAsset();
         }
 
-        // Map the offer hash to the offer quantity
-        APOffer memory offer = APOffer(
-            numAPOffers,
-            targetMarketHash,
-            fundingVault,
-            msg.sender,
-            address(0),
-            stakeAmount,
-            verificationScriptParams,
-            expiry,
-            timeToAct,
-            0,
-            address(0),
-            incentivesRequested,
-            incentiveAmountsRequested
+        offerHash = getAPOfferHash(
+            numIPOffers, targetMarketHash, msg.sender, expiry, stakeAmount, verificationScriptParams, incentivesRequested, incentiveAmountsRequested
         );
-        offerHash = getAPOfferHash(offer);
-        offerHashToAPOffer[offerHash] = offer;
+        APOffer storage offer = offerHashToAPOffer[offerHash];
+
+        offer.offerID = numAPOffers;
+        offer.targetMarketHash = targetMarketHash;
+        offer.fundingVault = fundingVault;
+        offer.ap = msg.sender;
+        offer.stakeAmount = stakeAmount;
+        offer.timeToAct = timeToAct;
+        offer.verificationScriptParams = verificationScriptParams;
+        offer.expiry = expiry;
+        offer.incentivesRequested = incentivesRequested;
+
+        delete offer.ipFiller; // make sure its unfilled
+        delete offer.dueDate; // make sure its unfilled
+        delete offer.frontendFeeRecipient; // make sure its unfilled
+
+        // Set incentives and fees in the offer mapping
+        for (uint256 i = 0; i < incentivesRequested.length; ++i) {
+            address incentive = incentivesRequested[i];
+            uint256 amount = incentiveAmountsRequested[i];
+
+            offer.incentiveAmountsRequested[incentive] = amount;
+            offer.incentiveToProtocolFeeAmount[incentive] = amount.mulWadDown(protocolFee);
+            offer.incentiveToFrontendFeeAmount[incentive] = amount.mulWadDown(targetMarket.frontendFee);
+        }
 
         /// @dev APOffer events are stored in events and do not exist onchain outside of the offerHashToRemainingQuantity mapping
         emit APOfferCreated(
@@ -404,13 +417,15 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         offer.offerID = numIPOffers;
         offer.targetMarketHash = targetMarketHash;
         offer.ip = msg.sender;
-        delete offer.apFiller; // make sure its unfilled
-        delete offer.dueDate; // make sure its unfilled
         offer.stakeAmount = stakeAmount;
         offer.timeToAct = timeToAct;
         offer.verificationScriptParams = verificationScriptParams;
         offer.expiry = expiry;
         offer.incentivesOffered = incentivesOffered;
+
+        delete offer.apFiller; // make sure its unfilled
+        delete offer.dueDate; // make sure its unfilled
+        delete offer.frontendFeeRecipient; // make sure its unfilled
 
         // Set incentives and fees in the offer mapping
         for (uint256 i = 0; i < incentivesOffered.length; ++i) {
@@ -511,17 +526,23 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
             address incentive = offer.incentivesRequested[i];
 
             // This is the incentive amount allocated to the AP
-            uint256 incentiveAmount = offer.incentiveAmountsRequested[i];
+            uint256 incentiveAmount = offer.incentiveAmountsRequested[incentive];
             // Check that the incentives allocated to the AP are non-zero
             if (incentiveAmount == 0) {
                 revert NoIncentivesPaidOnFill();
             }
 
             incentiveAmountsPaid[i] = incentiveAmount;
-
             // Calculate fees based on fill percentage. These fees will be taken on top of the AP's requested amount.
             protocolFeesPaid[i] = incentiveAmount.mulWadDown(protocolFeeAtFill);
             frontendFeesPaid[i] = incentiveAmount.mulWadDown(marketFrontendFee);
+
+            // Scoping block to avoid stack to deep
+            {
+                offer.incentiveAmountsRequested[incentive] = incentiveAmount;
+                offer.incentiveToProtocolFeeAmount[incentive] = protocolFeesPaid[i];
+                offer.incentiveToFrontendFeeAmount[incentive] = frontendFeesPaid[i];
+            }
 
             // Pull incentives from IP and account fees
             _pullIncentivesOnAPFill(incentive, incentiveAmount, protocolFeesPaid[i], frontendFeesPaid[i]);
@@ -539,20 +560,25 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
     }
 
     /// @notice Cancel an AP offer, setting the remaining quantity available to fill to 0
-    function cancelAPOffer(APOffer calldata offer) external payable {
+    function cancelAPOffer(bytes32 offerHash) external payable {
+        APOffer storage offer = offerHashToAPOffer[offerHash];
+
         // Check that the cancelling party is the offer's owner
         if (offer.ap != msg.sender) revert NotOwner();
 
-        // Check that the offer isn't already filled, hasn't been cancelled already, or never existed
-        bytes32 offerHash = getAPOfferHash(offer);
-        if (offerHashToAPOffer[offerHash].ipFiller != address(0)) {
+        if (offer.ipFiller != address(0)) {
             revert OfferAlreadyFilled();
         }
 
         // Transfer the remaining incentives back to the IP
         for (uint256 i = 0; i < offer.incentivesRequested.length; ++i) {
-            delete offerHashToAPOffer[offerHash].incentivesRequested[i];
-            delete offerHashToAPOffer[offerHash].incentiveAmountsRequested[i];
+            address incentive = offer.incentivesRequested[i];
+
+            /// Delete cancelled fields of dynamic arrays and mappings
+            delete offer.incentivesRequested[i];
+            delete offer.incentiveAmountsRequested[incentive];
+            delete offer.incentiveToProtocolFeeAmount[incentive];
+            delete offer.incentiveToFrontendFeeAmount[incentive];
         }
 
         // Set remaining quantity to 0 - effectively cancelling the offer
@@ -595,63 +621,85 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         emit IPOfferCancelled(offerHash);
     }
 
-    // /// @param weirollWallet The wallet to claim for
-    // /// @param to The address to send the incentive to
-    // function claim(address weirollWallet, address to) external payable nonReentrant {
-    //     // Get the frontend fee recipient and ip from locked reward params
-    //     address frontendFeeRecipient = params.frontendFeeRecipient;
-    //     address ip = params.ip;
+    function claim(bytes32 marketHash, bytes32 offerHash, bool wasIPOffer, bytes calldata oanSignature) external payable nonReentrant {
+        // Get the market
+        OffchainActionMarket storage market = marketHashToOffchainActionMarket[marketHash];
+        if (wasIPOffer) {
+            IPOffer storage offer = offerHashToIPOffer[offerHash];
 
-    //     if (params.wasIPOffer) {
-    //         // If it was an ipoffer, get the offer so we can retrieve the fee amounts and fill quantity
-    //         IPOffer storage offer = offerHashToIPOffer[params.offerHash];
+            if (offer.dueDate > block.timestamp) {
+                // Give the stake to the IP
+                (market.stakingToken).safeTransfer(offer.ip, offer.stakeAmount);
+                delete offerHashToIPOffer[offerHash];
+                return;
+            }
 
-    //         uint256 stakeAmount = wallet.amount();
-    //         uint256 fillPercentage = stakeAmount.divWadDown(offer.quantity);
+            if (ECDSA.tryRecover(offerHash, oanSignature) != market.oanSigningAddress) {
+                revert InvalidOanSignature();
+            }
 
-    //         for (uint256 i = 0; i < params.incentives.length; ++i) {
-    //             address incentive = params.incentives[i];
+            // Return the stake
+            (market.stakingToken).safeTransfer(offer.apFiller, offer.stakeAmount);
 
-    //             // Calculate fees to take based on percentage of fill
-    //             uint256 protocolFeeAmount = offer.incentiveToProtocolFeeAmount[incentive].mulWadDown(fillPercentage);
-    //             uint256 frontendFeeAmount = offer.incentiveToFrontendFeeAmount[incentive].mulWadDown(fillPercentage);
+            // Pay out the incentives and take the fees
+            for (uint256 i = 0; i < offer.incentivesOffered.length; ++i) {
+                address incentive = offer.incentivesOffered[i];
+                _pushIncentivesAndAccountFees(
+                    incentive,
+                    offer.apFiller,
+                    offer.incentiveAmountsOffered[incentive],
+                    offer.incentiveToProtocolFeeAmount[incentive],
+                    offer.incentiveToFrontendFeeAmount[incentive],
+                    offer.ip,
+                    offer.frontendFeeRecipient
+                );
 
-    //             // Reward incentives to AP upon claim and account fees
-    //             _pushIncentivesAndAccountFees(incentive, to, params.amounts[i], protocolFeeAmount, frontendFeeAmount, ip, frontendFeeRecipient);
+                // Delete cancelled fields of dynamic arrays and mappings
+                delete offer.incentivesOffered[i];
+                delete offer.incentiveAmountsOffered[incentive];
+                delete offer.incentiveToProtocolFeeAmount[incentive];
+                delete offer.incentiveToFrontendFeeAmount[incentive];
+            }
+        } else {
+            APOffer storage offer = offerHashToAPOffer[offerHash];
 
-    //             emit WeirollWalletClaimedIncentive(weirollWallet, to, incentive);
+            if (offer.dueDate > block.timestamp) {
+                // Give the stake to the IP
+                (market.stakingToken).safeTransfer(offer.ipFiller, offer.stakeAmount);
+                delete offerHashToIPOffer[offerHash];
+                return;
+            }
 
-    //             /// Delete fields of dynamic arrays and mappings
-    //             delete params.incentives[i];
-    //             delete params.amounts[i];
-    //         }
-    //     } else {
-    //         // Get the protocol fee at fill and market frontend fee
-    //         uint256 protocolFeeAtFill = params.protocolFeeAtFill;
-    //         uint256 marketFrontendFee = marketHashToOffchainActionMarket[wallet.marketHash()].frontendFee;
+            if (ECDSA.tryRecover(offerHash, oanSignature) != market.oanSigningAddress) {
+                revert InvalidOanSignature();
+            }
 
-    //         for (uint256 i = 0; i < params.incentives.length; ++i) {
-    //             address incentive = params.incentives[i];
-    //             uint256 amount = params.amounts[i];
+            // Return the stake
+            (market.stakingToken).safeTransfer(offer.ap, offer.stakeAmount);
 
-    //             // Calculate fees to take based on percentage of fill
-    //             uint256 protocolFeeAmount = amount.mulWadDown(protocolFeeAtFill);
-    //             uint256 frontendFeeAmount = amount.mulWadDown(marketFrontendFee);
+            // Pay out the incentives and take the fees
+            for (uint256 i = 0; i < offer.incentivesRequested.length; ++i) {
+                address incentive = offer.incentivesRequested[i];
 
-    //             // Reward incentives to AP upon claim and account fees
-    //             _pushIncentivesAndAccountFees(incentive, to, amount, protocolFeeAmount, frontendFeeAmount, ip, frontendFeeRecipient);
+                _pushIncentivesAndAccountFees(
+                    offer.incentivesRequested[i],
+                    offer.ap,
+                    offer.incentiveAmountsRequested[incentive],
+                    offer.incentiveToProtocolFeeAmount[incentive],
+                    offer.incentiveToFrontendFeeAmount[incentive],
+                    offer.ipFiller,
+                    offer.frontendFeeRecipient
+                );
 
-    //             emit WeirollWalletClaimedIncentive(weirollWallet, to, incentive);
-
-    //             /// Delete fields of dynamic arrays and mappings
-    //             delete params.incentives[i];
-    //             delete params.amounts[i];
-    //         }
-    //     }
-
-    //     // Zero out the mapping
-    //     delete weirollWalletToLockedIncentivesParams[weirollWallet];
-    // }
+                // Delete cancelled fields of dynamic arrays and mappings
+                delete offer.incentivesRequested[i];
+                delete offer.incentiveAmountsRequested[incentive];
+                delete offer.incentiveToProtocolFeeAmount[incentive];
+                delete offer.incentiveToFrontendFeeAmount[incentive];
+            }
+        }
+        delete offerHashToIPOffer[offerHash];
+    }
 
     function _accountFee(address recipient, address incentive, uint256 amount, address ip) internal {
         //check to see the incentive is actually a points campaign
@@ -748,8 +796,23 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
     }
 
     /// @notice Calculates the hash of an AP offer
-    function getAPOfferHash(APOffer memory offer) public pure returns (bytes32) {
-        return keccak256(abi.encode(offer));
+    function getAPOfferHash(
+        uint256 offerID,
+        bytes32 targetMarketHash,
+        address ap,
+        uint256 expiry,
+        uint256 stakeAmount,
+        bytes calldata verificationScriptParams,
+        address[] calldata incentivesRequested,
+        uint256[] memory incentiveAmountsRequested
+    )
+        public
+        pure
+        returns (bytes32)
+    {
+        return keccak256(
+            abi.encodePacked(offerID, targetMarketHash, ap, expiry, stakeAmount, verificationScriptParams, incentivesRequested, incentiveAmountsRequested)
+        );
     }
 
     /// @notice Calculates the hash of an IP offer
