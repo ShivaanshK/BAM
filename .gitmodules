@@ -16,3 +16,6 @@
 [submodule "BAM-Contracts/lib/enso-weiroll"]
 	path = BAM-Contracts/lib/enso-weiroll
 	url = https://github.com/EnsoFinance/enso-weiroll
+[submodule "BAM-Contracts/lib/openzeppelin-contracts"]
+	path = BAM-Contracts/lib/openzeppelin-contracts
+	url = https://github.com/Openzeppelin/openzeppelin-contracts
