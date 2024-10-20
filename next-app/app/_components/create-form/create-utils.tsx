@@ -92,7 +92,7 @@ export async function mintPkp(ethersSigner: any) {
 export async function getSessionSigs(litNodeClient: any, ethersSigner: any) {
   console.log("Getting Session Signatures...");
   return litNodeClient.getSessionSigs({
-    chain: "ethereum",
+    chain: "sepolia",
     expiration: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(), // 24 hours
     resourceAbilityRequests: [
       {

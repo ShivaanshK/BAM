@@ -63,12 +63,9 @@ export const litActionCode = `
 
     console.log(tweetResponse)
 
-    // Define the offer type and offer hash
-    const offerType = "IP";
-    const offerHash = "0x01BC9C9163E640DAFAFA9C875CDC95A674CDCBABC7B8F2BA1FDCB68CEF06B8B6";
 
     const rpcUrl = "https://sepolia.gateway.tenderly.co	"
-    const contractAddress = "0xA5521c77A49246C1e6eB8FA05EF28e3450c81315"
+
     const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
 
     const contract = new ethers.Contract(contractAddress, ABI, provider);
@@ -98,7 +95,11 @@ export const litActionCode = `
     // Now we have expectedMinFollowerCount and expectedTweetText
     // Compare the follower count from the tweet text to verify action
     if (tweetResponse.followerCount < expectedMinFollowerCount || tweetResponse.text != expectedTweetText) {
-      LitActions.setResponse({ response: "Action does not meet the offer's requirements" });
+      LitActions.setResponse({ response: "Action does not meet the offer's requirements", 
+      expectedTweetText: expectedTweetText,
+      expectedMinFollowerCount: expectedMinFollowerCount,
+      
+      });
       return;
     }
 

@@ -19,14 +19,13 @@ import { useMarket } from "@/store";
 import { OfferForm } from "./offer-form";
 import { FillOfferForm } from "./fill-offer-form";
 import { MarketHashSelector } from "./market-hash-selector";
+import { ClaimForm } from "./claim-form";
 
 export const OfferTabSelector = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ children, className, ...props }, ref) => {
   const { offerTab, setOfferTab } = useMarket();
-
-  console.log("offerTab", offerTab);
 
   return (
     <Tabs
@@ -35,9 +34,10 @@ export const OfferTabSelector = React.forwardRef<
       defaultValue="create"
       className="w-[400px]"
     >
-      <TabsList className="grid w-full grid-cols-2">
+      <TabsList className="grid w-full grid-cols-3">
         <TabsTrigger value="create">Create Offer</TabsTrigger>
         <TabsTrigger value="fill">Fill Offer</TabsTrigger>
+        <TabsTrigger value="claim">Claim Offer</TabsTrigger>
       </TabsList>
 
       <MarketHashSelector />
@@ -64,6 +64,18 @@ export const OfferTabSelector = React.forwardRef<
           </CardHeader>
           <CardContent className="space-y-2">
             <FillOfferForm />
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="claim">
+        <Card>
+          <CardHeader>
+            <CardTitle>Claim Offer</CardTitle>
+            <CardDescription>Claim the filled offer.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <ClaimForm />
           </CardContent>
         </Card>
       </TabsContent>

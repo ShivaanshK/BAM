@@ -1,6 +1,6 @@
 import OffchainActionMarketHubAbi from "./OffchainActionMarketHub.json";
 
 export const OFFCHAIN_MARKET_HUB = {
-  address: "0xA5521c77A49246C1e6eB8FA05EF28e3450c81315",
+  address: "0x9F4f18a54D2e9cB55d9a4dE5d3e12528Eb585A3C",
   abi: OffchainActionMarketHubAbi.abi,
 };

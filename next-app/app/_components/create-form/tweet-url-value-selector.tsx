@@ -13,25 +13,26 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { claimFormSchema } from "./claim-form";
 
-export const StakeValueSelector = React.forwardRef<
+export const TweetUrlValueSelector = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement> & {
-    offerForm: UseFormReturn<z.infer<typeof offerFormSchema>>;
+    claimForm: UseFormReturn<z.infer<typeof claimFormSchema>>;
   }
->(({ children, className, offerForm, ...props }, ref) => {
+>(({ children, className, claimForm, ...props }, ref) => {
   return (
     <FormField
-      control={offerForm.control}
-      name="stakeValue"
+      control={claimForm.control}
+      name="tweetUrl"
       render={({ field }) => (
         <FormItem>
-          <FormLabel>Stake Value</FormLabel>
+          <FormLabel>Tweet Url</FormLabel>
           <FormControl>
-            <Input placeholder="Stake Value" {...field} />
+            <Input placeholder="Enter Url" {...field} />
           </FormControl>
           <FormDescription>
-            This is the amount of tokens you want to stake.
+            Enter the tweet url you want to claim.
           </FormDescription>
           <FormMessage />
         </FormItem>

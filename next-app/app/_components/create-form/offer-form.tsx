@@ -96,10 +96,12 @@ export const OfferForm = React.forwardRef<
   });
 
   useEffect(() => {
-    if (txData && txData.logs[0].topics[2]) {
-      setOfferCreatedHash(txData.logs[0].topics[2]);
+    if (txData && txData.logs[1].topics[2]) {
+      setOfferCreatedHash(txData.logs[1].topics[2]);
     }
   }, [txData]);
+
+  console.log("txData", txData);
 
   return (
     <div ref={ref} {...props} className={cn("w-full", className)}>

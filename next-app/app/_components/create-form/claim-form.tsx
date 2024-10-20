@@ -27,6 +27,11 @@ import { useSwitchChain } from "wagmi";
 import { config } from "@/components/web3-modal/modal-config";
 import { LoadingSpinner } from "@/components/composables";
 import { CopyTextViewer } from "./copy-text-viewer";
+import { TweetUrlValueSelector } from "./tweet-url-value-selector";
+
+import * as LitJsSdk from "@lit-protocol/lit-node-client";
+import { LitNetwork } from "@lit-protocol/constants";
+import { litActionCode } from "./litAction";
 
 // Convert wagmi client to ethers signer
 export function clientToSigner(client: Client<Transport, Chain, Account>) {
@@ -47,13 +52,11 @@ export function useEthersSigner({ chainId }: { chainId?: number } = {}) {
   return useMemo(() => (client ? clientToSigner(client) : undefined), [client]);
 }
 
-export const createFormSchema = z.object({
-  stakingToken: z.string(),
-  ipfsContentID: z.string(),
-  oanSigningAddress: z.string(),
+export const claimFormSchema = z.object({
+  tweetUrl: z.string(),
 });
 
-export const CreateForm = React.forwardRef<
+export const ClaimForm = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ children, className, ...props }, ref) => {
@@ -65,7 +68,6 @@ export const CreateForm = React.forwardRef<
   const { selectedNetworkId } = useWeb3ModalState();
 
   const { switchChain, switchChainAsync } = useSwitchChain();
-  // const { switchNetwork } = useSwitchNetwork();
 
   const { data: walletClient } = useWalletClient();
 
@@ -78,13 +80,14 @@ export const CreateForm = React.forwardRef<
     oanSigningAddress,
     setMarketHash,
     marketHash,
+    offerCreatedHash,
+    setOfferCreatedHash,
   } = useMarket();
 
-  const createForm = useForm<z.infer<typeof createFormSchema>>({
-    resolver: zodResolver(createFormSchema),
+  const claimForm = useForm<z.infer<typeof claimFormSchema>>({
+    resolver: zodResolver(claimFormSchema),
     defaultValues: {
-      stakingToken: "0x3c727dd5ea4c55b7b9a85ea2f287c641481400f7",
-      ipfsContentID: "",
+      tweetUrl: "",
     },
   });
 
@@ -103,15 +106,13 @@ export const CreateForm = React.forwardRef<
     hash: txHash,
   });
 
-  console.log("txData", txData);
-
   useEffect(() => {
     if (txData && txData.logs[0].topics[2]) {
       setMarketHash(txData.logs[0].topics[2]);
     }
   }, [txData]);
 
-  function onSubmit(values: z.infer<typeof createFormSchema>) {
+  function onSubmit(values: z.infer<typeof claimFormSchema>) {
     // console.log(values);
 
     if (!isConnected) {
@@ -131,69 +132,84 @@ export const CreateForm = React.forwardRef<
 
   return (
     <div ref={ref} {...props} className={cn("", className)}>
-      <Form {...createForm}>
-        <form
-          onSubmit={createForm.handleSubmit(onSubmit)}
-          className="space-y-8"
-        >
-          <StakingTokenSelector createForm={createForm} />
-          <IpfsContentIdSelector createForm={createForm} />
-          <WalletConnector createForm={createForm} />
+      <Form {...claimForm}>
+        <form onSubmit={claimForm.handleSubmit(onSubmit)} className="space-y-8">
+          <TweetUrlValueSelector claimForm={claimForm} />
 
           <Button
             onClick={async () => {
               try {
-                // @ts-ignore
-                if (selectedNetworkId !== 175188) {
-                  await switchChainAsync({
-                    chainId: 175188,
-                  });
-                }
+                const tweetId = claimForm.watch("tweetUrl").split("/")[5];
 
                 const litNodeClient = await getLitNodeClient();
+
+                const accessControlConditions = [
+                  {
+                    contractAddress: "",
+                    standardContractType: "",
+                    chain: "sepolia",
+                    method: "",
+                    parameters: [":currentActionIpfsId"],
+                    returnValueTest: {
+                      comparator: "=",
+                      value: ipfsHash,
+                    },
+                  },
+                ];
 
                 const sessionSigs = await getSessionSigs(
                   litNodeClient,
                   ethersSigner
                 );
 
-                const data = await mintPkp(ethersSigner);
+                const { ciphertext, dataToEncryptHash } =
+                  await LitJsSdk.encryptString(
+                    {
+                      accessControlConditions,
+                      // @ts-ignore
+                      chain: "sepolia",
+                      dataToEncrypt: tweetId,
+                    },
+                    litNodeClient
+                  );
 
-                setPkpPublicKey(data.pkpPublicKey);
-                setIpfsHash(data.ipfsHash);
+                console.log("ciphertext", ciphertext);
+                console.log("dataToEncryptHash", dataToEncryptHash);
 
-                console.log("ipfs hash", data.ipfsHash);
-
-                setOanSigningAddress(data.oanSigningAddress);
-
-                //  switchChain({
-                //   chainId: 11155111,
-                // });
-
-                walletClient?.switchChain({
-                  id: 11155111,
+                const litActionSignatures = await litNodeClient.executeJs({
+                  sessionSigs,
+                  code: litActionCode,
+                  jsParams: {
+                    contractAddress: OFFCHAIN_MARKET_HUB.address,
+                    offerType: "IP",
+                    offerHash: offerCreatedHash,
+                    accessControlConditions,
+                    ciphertext,
+                    dataToEncryptHash,
+                    chain: 11155111,
+                    publicKey: pkpPublicKey,
+                    sigName: `sig`,
+                  },
                 });
 
-                // console.log("data ipfs hash", data.ipfsHash);
-                // console.log("length", data.ipfsHash.length);
+                console.log("litActionSignatures", litActionSignatures);
 
-                setTimeout(async () => {
-                  await writeContractAsync({
-                    address: OFFCHAIN_MARKET_HUB.address as Address,
-                    abi: OFFCHAIN_MARKET_HUB.abi,
-                    functionName: "createMarket",
-                    args: [
-                      createForm.watch("stakingToken"),
-                      "10000000000000000",
-                      ethers.utils.hexlify(
-                        ethers.utils.toUtf8Bytes(data.ipfsHash)
-                      ),
-                      data.oanSigningAddress,
-                    ],
-                  });
-                }, 5000);
+                console.log("marketHash", marketHash);
+                console.log("offerHash", offerCreatedHash);
+
+                await writeContractAsync({
+                  address: OFFCHAIN_MARKET_HUB.address as Address,
+                  abi: OFFCHAIN_MARKET_HUB.abi,
+                  functionName: "claim",
+                  args: [
+                    marketHash,
+                    offerCreatedHash,
+                    true,
+                    litActionSignatures.signatures.sig.signature,
+                  ],
+                });
               } catch (error) {
-                console.log("error creating market", error);
+                console.log("error claiming offer", error);
               }
             }}
             disabled={!isConnected ? true : false}
@@ -203,11 +219,11 @@ export const CreateForm = React.forwardRef<
             {isTxConfirming ? (
               <LoadingSpinner className="h-5 w-5" />
             ) : (
-              "Create Market"
+              "Claim Offer"
             )}
           </Button>
         </form>
-        <CopyTextViewer className="mt-2" value={marketHash} />
+        <CopyTextViewer className="mt-2" value={txHash} />
       </Form>
     </div>
   );
