@@ -64,15 +64,12 @@ export const litActionCode = `
     console.log(tweetResponse)
 
 
-    const rpcUrl = "https://sepolia.gateway.tenderly.co	"
+    const rpcUrl = "https://sepolia.gateway.tenderly.co"
 
     const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
 
     const contract = new ethers.Contract(contractAddress, ABI, provider);
     let offer;
-    let verificationScriptParams;
-    let expectedMinFollowerCount;
-    let expectedTweetText;
 
     if (offerType == "IP") {
       offer = await contract.offerHashToIPOffer(offerHash);
@@ -84,13 +81,13 @@ export const litActionCode = `
     }
 
     // Extract verificationScriptParams
-    verificationScriptParams = offer.verificationScriptParams;
+    let verificationScriptParams = offer.verificationScriptParams;
 
     // Decode verificationScriptParams
     const decodedParams = ethers.utils.defaultAbiCoder.decode(["uint256", "string"], verificationScriptParams);
 
-    expectedMinFollowerCount = decodedParams[0].toNumber();
-    expectedTweetText = decodedParams[1];
+    let expectedMinFollowerCount = decodedParams[0].toNumber();
+    let expectedTweetText = decodedParams[1];
 
     // Now we have expectedMinFollowerCount and expectedTweetText
     // Compare the follower count from the tweet text to verify action
