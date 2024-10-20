@@ -1,0 +1,21 @@
+[submodule "BAM-Contracts/lib/forge-std"]
+	path = BAM-Contracts/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
+[submodule "BAM-Contracts/lib/solady"]
+	path = BAM-Contracts/lib/solady
+	url = https://github.com/vectorized/solady
+[submodule "BAM-Contracts/lib/solmate"]
+	path = BAM-Contracts/lib/solmate
+	url = https://github.com/transmissions11/solmate
+[submodule "BAM-Contracts/lib/clones-with-immutable-args"]
+	path = BAM-Contracts/lib/clones-with-immutable-args
+	url = https://github.com/wighawag/clones-with-immutable-args
+[submodule "BAM-Contracts/lib/erc4626-tests"]
+	path = BAM-Contracts/lib/erc4626-tests
+	url = https://github.com/a16z/erc4626-tests
+[submodule "BAM-Contracts/lib/enso-weiroll"]
+	path = BAM-Contracts/lib/enso-weiroll
+	url = https://github.com/EnsoFinance/enso-weiroll
+[submodule "BAM-Contracts/lib/openzeppelin-contracts"]
+	path = BAM-Contracts/lib/openzeppelin-contracts
+	url = https://github.com/Openzeppelin/openzeppelin-contracts
