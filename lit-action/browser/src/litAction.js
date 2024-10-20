@@ -1,7 +1,5 @@
 export const litActionCode = `
 (async () => {
-  console.log(tweetId, followerCountThreshold, publicKey, sigName);
-  
   // Updated fetch request with x-www-form-urlencoded body
   const tweetUrl = "https://bam-backend-five.vercel.app/api/checkTweet";
   const tweetResponse = await fetch(tweetUrl, {
@@ -14,12 +12,14 @@ export const litActionCode = `
     })
   }).then(response => response.json());
 
-  console.log(tweetResponse);
-
   if (tweetResponse.followerCount < followerCountThreshold) {
     return;
   }
-  
+
+  const abi = [
+    "function checkTweet(string tweetId) public view returns (bool)"
+  ];
+
   // Convert an empty string to bytes and hash it
   let toSign = ethers.utils.arrayify(
     ethers.utils.keccak256(ethers.utils.toUtf8Bytes(tweetId))
