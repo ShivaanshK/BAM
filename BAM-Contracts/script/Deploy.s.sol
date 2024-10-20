@@ -2,6 +2,8 @@
 
 // Usage: source .env && forge script ./script/Deploy.s.sol --rpc-url=$SEPOLIA_RPC_URL --broadcast --etherscan-api-key=$ETHERSCAN_API_KEY --verify
 
+// Usage: source .env && forge script ./script/Deploy.s.sol --rpc-url=$FHENIX_RPC_URL --broadcast
+
 pragma solidity ^0.8.13;
 
 import "forge-std/Script.sol";
