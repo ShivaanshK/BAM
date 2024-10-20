@@ -43,7 +43,8 @@ async function buttonClick() {
       code: litActionCode,
       jsParams: {
         tweetId: "1847276567438962888",
-        followerCountThreshold: 10000,
+        offerHash: "x",
+        offerType: "IP",
         publicKey: pkpPublicKey,
         sigName: "sig",
       },

@@ -161,10 +161,8 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
     error ArrayLengthMismatch();
     /// @notice emitted when the frontend fee is below the minimum
     error FrontendFeeTooLow();
-    /// @notice emitted when trying to forfeit a wallet that is not owned by the caller
+    /// @notice emitted when trying to cancel an offer without being the one who placed it
     error NotOwner();
-    /// @notice emitted when trying to claim rewards of a wallet that is locked
-    error WalletLocked();
     /// @notice Emitted when trying to start a rewards campaign with a non-existent incentive
     error TokenDoesNotExist();
     /// @notice Emitted when sum of protocolFee and frontendFee is greater than 100% (1e18)
@@ -507,7 +505,7 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
             revert OfferAlreadyFilled();
         }
 
-        // Get Weiroll market
+        // Get Offchain Action Market
         OffchainActionMarket storage market = marketHashToOffchainActionMarket[offer.targetMarketHash];
 
         uint256 numIncentives = offer.incentivesRequested.length;
