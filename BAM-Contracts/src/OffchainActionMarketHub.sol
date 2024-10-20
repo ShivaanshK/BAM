@@ -627,7 +627,7 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         if (wasIPOffer) {
             IPOffer storage offer = offerHashToIPOffer[offerHash];
 
-            if (offer.dueDate > block.timestamp) {
+            if (offer.dueDate < block.timestamp) {
                 // Give the stake to the IP
                 (market.stakingToken).safeTransfer(offer.ip, offer.stakeAmount);
                 delete offerHashToIPOffer[offerHash];
@@ -663,7 +663,7 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         } else {
             APOffer storage offer = offerHashToAPOffer[offerHash];
 
-            if (offer.dueDate > block.timestamp) {
+            if (offer.dueDate < block.timestamp) {
                 // Give the stake to the IP
                 (market.stakingToken).safeTransfer(offer.ipFiller, offer.stakeAmount);
                 delete offerHashToIPOffer[offerHash];
