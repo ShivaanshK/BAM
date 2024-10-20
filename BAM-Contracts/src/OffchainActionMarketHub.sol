@@ -179,6 +179,8 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
     error InvalidOanSignature();
     /// @notice emitted when trying to fill offers while offers are paused
     error OffersPaused();
+    /// @notice emitted when trying to fill a nonexistent offer
+    error NonexistentOffer();
 
     /// @notice Check if offer fills have been paused
     modifier offersNotPaused() {
@@ -466,6 +468,10 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         // Retreive the IPOffer and OffchainActionMarket structs
         IPOffer storage offer = offerHashToIPOffer[offerHash];
         OffchainActionMarket storage market = marketHashToOffchainActionMarket[offer.targetMarketHash];
+        
+        if (offer.ip == address(0)) {
+            revert NonexistentOffer();
+        }
 
         // Check that the offer isn't expired
         if (offer.expiry != 0 && block.timestamp > offer.expiry) {
@@ -495,6 +501,11 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
 
     function fillAPOffer(bytes32 offerHash, address frontendFeeRecipient) external {
         APOffer storage offer = offerHashToAPOffer[offerHash];
+
+                if (offer.ap == address(0)) {
+            revert NonexistentOffer();
+        }
+
         if (offer.expiry != 0 && block.timestamp > offer.expiry) {
             revert OfferExpired();
         }
