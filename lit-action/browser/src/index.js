@@ -111,6 +111,8 @@ async function mintPkp(ethersSigner) {
   const receipt = await txn.wait();
   console.log("Minted!", receipt);
 
+  console.log(receipt.pkp);
+
   // get the pkp public key from the mint event
   const pkpId = receipt.logs[0].topics[1];
   const pkpInfo = await litContracts.pubkeyRouterContract.read.pubkeys(
@@ -118,6 +120,8 @@ async function mintPkp(ethersSigner) {
   );
   console.log("PKP Info:", pkpInfo);
   const pkpPublicKey = pkpInfo.pubkey;
+
+  console.log("PKP Address:", ethers.utils.computeAddress(pkpPublicKey));
 
   console.log("PKP Public Key:", pkpPublicKey);
 
