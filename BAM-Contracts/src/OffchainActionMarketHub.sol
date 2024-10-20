@@ -54,7 +54,7 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         ERC20 stakingToken;
         uint256 marketID;
         uint256 frontendFee;
-        bytes32 ipfsContentID;
+        bytes ipfsCID; // Content identifier of the LIT script on IPFS
         address oanSigningAddress; // Address of the offchain attestation network to verify signatures against
     }
 
@@ -93,7 +93,7 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         mapping(address => uint256) incentiveToFrontendFeeAmount; // amounts to be allocated to frontend provider (per incentive)
     }
 
-    event MarketCreated(uint256 indexed marketID, bytes32 indexed marketHash, uint256 frontendFee, bytes32 ipfsContentID, address oanSigningAddress);
+    event MarketCreated(uint256 indexed marketID, bytes32 indexed marketHash, uint256 frontendFee, bytes ipfsCID, address oanSigningAddress);
 
     event APOfferCreated(
         uint256 indexed offerID,
@@ -209,7 +209,7 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
     function createMarket(
         ERC20 stakingToken,
         uint256 frontendFee,
-        bytes32 ipfsContentID,
+        bytes calldata ipfsCID,
         address oanSigningAddress
     )
         external
@@ -225,11 +225,11 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
             revert TotalFeeTooHigh();
         }
 
-        OffchainActionMarket memory market = OffchainActionMarket(stakingToken, numMarkets, frontendFee, ipfsContentID, oanSigningAddress);
+        OffchainActionMarket memory market = OffchainActionMarket(stakingToken, numMarkets, frontendFee, ipfsCID, oanSigningAddress);
         marketHash = getMarketHash(market);
         marketHashToOffchainActionMarket[marketHash] = market;
 
-        emit MarketCreated(numMarkets, marketHash, frontendFee, ipfsContentID, oanSigningAddress);
+        emit MarketCreated(numMarkets, marketHash, frontendFee, ipfsCID, oanSigningAddress);
 
         numMarkets++;
     }
