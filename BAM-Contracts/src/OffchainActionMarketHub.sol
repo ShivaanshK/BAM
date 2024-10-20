@@ -52,7 +52,6 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
     struct OffchainActionMarket {
         ERC20 stakingToken;
         uint256 marketID;
-        uint256 timeToAct;
         uint256 frontendFee;
         bytes32 ipfsContentID;
         address oanSigningAddress; // Address of the offchain attestation network to verify signatures against
@@ -66,6 +65,8 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         uint256 stakeAmount;
         bytes verificationScriptParams;
         uint256 expiry;
+        uint256 timeToAct;
+        uint256 dueDate;
         address frontendFeeRecipient;
         address[] incentivesOffered;
         mapping(address => uint256) incentiveAmountsOffered; // amounts to be allocated to APs (per incentive)
@@ -82,14 +83,14 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         uint256 stakeAmount;
         bytes verificationScriptParams;
         uint256 expiry;
+        uint256 timeToAct;
+        uint256 dueDate;
         address frontendFeeRecipient;
         address[] incentivesRequested;
         uint256[] incentiveAmountsRequested;
     }
 
-    event MarketCreated(
-        uint256 indexed marketID, bytes32 indexed marketHash, uint256 timeToAct, uint256 frontendFee, bytes32 ipfsContentID, address oanSigningAddress
-    );
+    event MarketCreated(uint256 indexed marketID, bytes32 indexed marketHash, uint256 frontendFee, bytes32 ipfsContentID, address oanSigningAddress);
 
     event APOfferCreated(
         uint256 indexed offerID,
@@ -98,6 +99,7 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         address fundingVault,
         bytes verificationScriptParams,
         uint256 stakeAmount,
+        uint256 timeToAct,
         address[] incentiveAddresses,
         uint256[] incentiveAmounts,
         uint256 expiry
@@ -109,6 +111,7 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         bytes32 indexed marketHash,
         bytes verificationScriptParams,
         uint256 stakeAmount,
+        uint256 timeToAct,
         address[] incentivesOffered,
         uint256[] incentiveAmounts,
         uint256[] protocolFeeAmounts,
@@ -116,9 +119,11 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         uint256 expiry
     );
 
-    event IPOfferFilled(bytes32 indexed offerHash, address indexed ap);
+    event IPOfferFilled(bytes32 indexed offerHash, address indexed ap, uint256 dueDate);
 
-    event APOfferFilled(uint256 indexed offerID, address indexed ip, uint256[] incentiveAmounts, uint256[] protocolFeeAmounts, uint256[] frontendFeeAmounts);
+    event APOfferFilled(
+        uint256 indexed offerID, address indexed ip, uint256 dueDate, uint256[] incentiveAmounts, uint256[] protocolFeeAmounts, uint256[] frontendFeeAmounts
+    );
 
     /// @param offerHash The hash of the IP offer that was cancelled
     event IPOfferCancelled(bytes32 indexed offerHash);
@@ -200,7 +205,6 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
 
     function createMarket(
         ERC20 stakingToken,
-        uint256 timeToAct,
         uint256 frontendFee,
         bytes32 ipfsContentID,
         address oanSigningAddress
@@ -218,11 +222,11 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
             revert TotalFeeTooHigh();
         }
 
-        OffchainActionMarket memory market = OffchainActionMarket(stakingToken, numMarkets, timeToAct, frontendFee, ipfsContentID, oanSigningAddress);
+        OffchainActionMarket memory market = OffchainActionMarket(stakingToken, numMarkets, frontendFee, ipfsContentID, oanSigningAddress);
         marketHash = getMarketHash(market);
         marketHashToOffchainActionMarket[marketHash] = market;
 
-        emit MarketCreated(numMarkets, marketHash, timeToAct, frontendFee, ipfsContentID, oanSigningAddress);
+        emit MarketCreated(numMarkets, marketHash, frontendFee, ipfsContentID, oanSigningAddress);
 
         numMarkets++;
     }
@@ -232,6 +236,7 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         uint256 expiry,
         uint256 stakeAmount,
         address fundingVault,
+        uint256 timeToAct,
         bytes calldata verificationScriptParams,
         address[] calldata incentivesRequested,
         uint256[] calldata incentiveAmountsRequested
@@ -279,6 +284,8 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
             stakeAmount,
             verificationScriptParams,
             expiry,
+            timeToAct,
+            0,
             address(0),
             incentivesRequested,
             incentiveAmountsRequested
@@ -294,6 +301,7 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
             fundingVault,
             verificationScriptParams,
             stakeAmount,
+            timeToAct,
             incentivesRequested,
             incentiveAmountsRequested,
             expiry
@@ -308,6 +316,7 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         uint256 stakeAmount,
         bytes calldata verificationScriptParams,
         uint256 expiry,
+        uint256 timeToAct,
         address[] calldata incentivesOffered,
         uint256[] calldata incentiveAmountsPaid
     )
@@ -396,7 +405,9 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         offer.targetMarketHash = targetMarketHash;
         offer.ip = msg.sender;
         delete offer.apFiller; // make sure its unfilled
+        delete offer.dueDate; // make sure its unfilled
         offer.stakeAmount = stakeAmount;
+        offer.timeToAct = timeToAct;
         offer.verificationScriptParams = verificationScriptParams;
         offer.expiry = expiry;
         offer.incentivesOffered = incentivesOffered;
@@ -417,6 +428,7 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
             targetMarketHash,
             verificationScriptParams,
             stakeAmount,
+            timeToAct,
             incentivesOffered,
             incentiveAmountsOffered,
             protocolFeesToBePaid,
@@ -463,8 +475,9 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
 
         offer.apFiller = msg.sender;
         offer.frontendFeeRecipient = frontendFeeRecipient;
+        offer.dueDate = block.timestamp + offer.timeToAct;
 
-        emit IPOfferFilled(offerHash, msg.sender);
+        emit IPOfferFilled(offerHash, msg.sender, offer.dueDate);
     }
 
     function fillAPOffer(bytes32 offerHash, address frontendFeeRecipient) external {
@@ -478,10 +491,6 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         if (alreadyFilled) {
             revert OfferAlreadyFilled();
         }
-
-        // Set the IP to the fulfiller
-        offer.ipFiller = msg.sender;
-        offer.frontendFeeRecipient = frontendFeeRecipient;
 
         // Get Weiroll market
         OffchainActionMarket storage market = marketHashToOffchainActionMarket[offer.targetMarketHash];
@@ -521,7 +530,12 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         // Add stake from the AP in order to hold them accountable to complete the offchain action
         _addStake(offer.fundingVault, offer.ap, market.stakingToken, offer.stakeAmount);
 
-        emit APOfferFilled(offer.offerID, msg.sender, incentiveAmountsPaid, protocolFeesPaid, frontendFeesPaid);
+        // Set the IP to the fulfiller
+        offer.ipFiller = msg.sender;
+        offer.frontendFeeRecipient = frontendFeeRecipient;
+        offer.dueDate = block.timestamp + offer.timeToAct;
+
+        emit APOfferFilled(offer.offerID, msg.sender, offer.dueDate, incentiveAmountsPaid, protocolFeesPaid, frontendFeesPaid);
     }
 
     /// @notice Cancel an AP offer, setting the remaining quantity available to fill to 0
@@ -687,14 +701,7 @@ contract OffchainActionMarketHub is Owned, ReentrancyGuard {
         }
     }
 
-    function _pullIncentivesOnAPFill(
-        address incentive,
-        uint256 incentiveAmount,
-        uint256 protocolFeeAmount,
-        uint256 frontendFeeAmount
-    )
-        internal
-    {
+    function _pullIncentivesOnAPFill(address incentive, uint256 incentiveAmount, uint256 protocolFeeAmount, uint256 frontendFeeAmount) internal {
         // RewardStyle is Forfeitable or Arrear
         // If incentives will be paid out later, only handle the incentive case. Points will be awarded on claim.
         if (PointsFactory(POINTS_FACTORY).isPointsProgram(incentive)) {
